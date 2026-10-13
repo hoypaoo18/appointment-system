@@ -1,4 +1,6 @@
-import { useState, useMemo } from "react";
+import { STATIC_PREVIEW, previewData } from './preview-data';
+import { SystemHistory } from './components/SystemHistory';
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Toaster, toast } from "sonner";
 import {
   LayoutDashboard, CalendarDays, ClipboardList, History as HistoryIcon,
@@ -12,7 +14,7 @@ import {
 
 type Status = "pending" | "confirmed" | "rescheduled" | "completed" | "cancelled";
 type Role = "assistant" | "executive" | "admin";
-type AppView = "dashboard" | "appointments" | "new-appointment" | "detail" | "schedule" | "history" | "settings";
+type AppView = "dashboard" | "appointments" | "new-appointment" | "detail" | "schedule" | "history" | "settings" | "system-history";
 type BookStep = "client" | "meeting" | "executive" | "datetime" | "availability" | "review" | "confirmed";
 type ActivityAction = "created" | "confirmed" | "rescheduled" | "cancelled" | "completed" | "updated";
 
@@ -32,58 +34,15 @@ interface ActivityEntry {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const EXECUTIVES: Executive[] = [
-  { id: "exec-1", name: "Margaret Chen", title: "Chief Executive Officer", initials: "MC" },
-  { id: "exec-2", name: "Robert Hargrove", title: "Chief Financial Officer", initials: "RH" },
-  { id: "exec-3", name: "Victoria Santos", title: "Chief Operating Officer", initials: "VS" },
-];
+let EXECUTIVES: Executive[] = [];
 
-const TODAY = "2026-09-08";
+const TODAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
-const INITIAL_APPOINTMENTS: Appointment[] = [
-  { id: "APT-001", clientName: "James Whitfield", clientOrg: "Global Corp International", clientEmail: "j.whitfield@globalcorp.com", clientPhone: "+1 (555) 201-4400", purpose: "Q3 Financial Review", notes: "Bring the quarterly performance deck. Mr. Whitfield prefers concise presentations.", executiveId: "exec-1", date: TODAY, startTime: "09:00", duration: 60, status: "confirmed", createdAt: "2026-09-01T09:00:00Z", updatedAt: "2026-09-01T09:05:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-  { id: "APT-002", clientName: "Elena Martinez", clientOrg: "Apex Partners LLC", clientEmail: "e.martinez@apexpartners.com", clientPhone: "+1 (555) 308-7200", purpose: "Budget Proposal Discussion", notes: "Annual budget review for the upcoming fiscal year.", executiveId: "exec-2", date: TODAY, startTime: "11:00", duration: 45, status: "confirmed", createdAt: "2026-09-02T10:00:00Z", updatedAt: "2026-09-02T10:02:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-  { id: "APT-003", clientName: "David Kim", clientOrg: "TechVentures Asia", clientEmail: "d.kim@techventures.asia", clientPhone: "+1 (555) 445-9100", purpose: "Partnership Agreement Review", notes: "Follow-up from last month's initial meeting. Bring draft agreements.", executiveId: "exec-3", date: TODAY, startTime: "14:30", duration: 30, status: "pending", createdAt: "2026-09-05T14:00:00Z", updatedAt: "2026-09-05T14:00:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-  { id: "APT-004", clientName: "Sophie Anderson", clientOrg: "Financial Times Media", clientEmail: "s.anderson@ftmedia.com", clientPhone: "+1 (555) 562-3400", purpose: "Media Interview – Q3 Results", notes: "Approved talking points sent to CEO office on Sept 7.", executiveId: "exec-1", date: "2026-09-09", startTime: "10:00", duration: 60, status: "confirmed", createdAt: "2026-09-03T09:30:00Z", updatedAt: "2026-09-03T09:32:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-  { id: "APT-005", clientName: "Michael Thompson", clientOrg: "Meridian Capital Fund", clientEmail: "m.thompson@meridiancap.com", clientPhone: "+1 (555) 678-0200", purpose: "Investment Strategy Briefing", notes: "Confidential. No external recording.", executiveId: "exec-2", date: "2026-09-10", startTime: "09:30", duration: 90, status: "confirmed", createdAt: "2026-09-01T11:00:00Z", updatedAt: "2026-09-01T11:02:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-  { id: "APT-006", clientName: "Clara Bennett", clientOrg: "Nexus Group Holdings", clientEmail: "c.bennett@nexusgroup.com", clientPhone: "+1 (555) 731-5600", purpose: "Operations Efficiency Briefing", notes: "Include supply chain restructuring proposal in agenda.", executiveId: "exec-3", date: "2026-09-11", startTime: "15:00", duration: 60, status: "pending", createdAt: "2026-09-06T13:00:00Z", updatedAt: "2026-09-06T13:00:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-  { id: "APT-007", clientName: "Thomas Reed", clientOrg: "Reed & Associates", clientEmail: "t.reed@reedassoc.com", clientPhone: "+1 (555) 842-1100", purpose: "Board Member Quarterly Meeting", notes: "Recurring quarterly check-in. Board room reserved.", executiveId: "exec-1", date: "2026-09-12", startTime: "11:00", duration: 45, status: "confirmed", createdAt: "2026-08-15T09:00:00Z", updatedAt: "2026-08-15T09:02:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-  { id: "APT-008", clientName: "Aria Patel", clientOrg: "Patel Ventures", clientEmail: "a.patel@patelventures.com", clientPhone: "+1 (555) 901-3300", purpose: "Investor Relations Update", notes: "Quarterly investor update meeting.", executiveId: "exec-1", date: "2026-09-04", startTime: "10:00", duration: 60, status: "completed", createdAt: "2026-08-20T10:00:00Z", updatedAt: "2026-09-04T11:05:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-  { id: "APT-009", clientName: "Lucas Rivera", clientOrg: "Rivera Tax Consultants", clientEmail: "l.rivera@riveratax.com", clientPhone: "+1 (555) 023-6700", purpose: "Annual Tax Planning Session", notes: "Year-end tax strategy review.", executiveId: "exec-2", date: "2026-09-02", startTime: "14:00", duration: 90, status: "completed", createdAt: "2026-08-18T14:00:00Z", updatedAt: "2026-09-02T15:35:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-  { id: "APT-010", clientName: "Grace Tanaka", clientOrg: "Horizon Suppliers Ltd", clientEmail: "g.tanaka@horizonsup.com", clientPhone: "+1 (555) 145-8800", purpose: "Vendor Contract Negotiation", notes: "Price renegotiation for equipment contracts.", executiveId: "exec-3", date: "2026-08-29", startTime: "09:00", duration: 60, status: "cancelled", cancellationReason: "Client unable to attend. To be rescheduled.", createdAt: "2026-08-10T09:00:00Z", updatedAt: "2026-08-28T17:30:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-  { id: "APT-011", clientName: "Nathan Brooks", clientOrg: "Brooks Legal Group", clientEmail: "n.brooks@brookslegal.com", clientPhone: "+1 (555) 267-4400", purpose: "Legal Strategy Consultation", notes: "Regarding ongoing litigation review.", executiveId: "exec-1", date: "2026-09-15", startTime: "13:00", duration: 60, status: "rescheduled", previousDate: "2026-09-10", previousStartTime: "10:00", createdAt: "2026-09-01T10:00:00Z", updatedAt: "2026-09-07T09:00:00Z", createdBy: "Sarah Mitchell", updatedBy: "Sarah Mitchell" },
-];
 
-const INITIAL_USERS: AppUser[] = [
-  { id: "user-1", name: "Sarah Mitchell", email: "sarah.mitchell@meridian.com", role: "assistant", title: "Executive Assistant", active: true, initials: "SM" },
-  { id: "user-2", name: "Margaret Chen", email: "margaret.chen@meridian.com", role: "executive", title: "Chief Executive Officer", active: true, initials: "MC" },
-  { id: "user-3", name: "Robert Hargrove", email: "robert.hargrove@meridian.com", role: "executive", title: "Chief Financial Officer", active: true, initials: "RH" },
-  { id: "user-4", name: "Victoria Santos", email: "victoria.santos@meridian.com", role: "executive", title: "Chief Operating Officer", active: true, initials: "VS" },
-  { id: "user-5", name: "James Alderton", email: "j.alderton@meridian.com", role: "admin", title: "System Administrator", active: true, initials: "JA" },
-];
 
-const INITIAL_ACTIVITY: ActivityEntry[] = [
-  { id: "ACT-001", aptId: "APT-001", action: "created",     user: "Sarah Mitchell", timestamp: "2026-09-01T09:00:00Z", clientName: "James Whitfield" },
-  { id: "ACT-002", aptId: "APT-001", action: "confirmed",   user: "Sarah Mitchell", timestamp: "2026-09-01T09:05:00Z", clientName: "James Whitfield" },
-  { id: "ACT-003", aptId: "APT-002", action: "created",     user: "Sarah Mitchell", timestamp: "2026-09-02T10:00:00Z", clientName: "Elena Martinez" },
-  { id: "ACT-004", aptId: "APT-002", action: "confirmed",   user: "Sarah Mitchell", timestamp: "2026-09-02T10:02:00Z", clientName: "Elena Martinez" },
-  { id: "ACT-005", aptId: "APT-003", action: "created",     user: "Sarah Mitchell", timestamp: "2026-09-05T14:00:00Z", clientName: "David Kim" },
-  { id: "ACT-006", aptId: "APT-004", action: "created",     user: "Sarah Mitchell", timestamp: "2026-09-03T09:30:00Z", clientName: "Sophie Anderson" },
-  { id: "ACT-007", aptId: "APT-004", action: "confirmed",   user: "Sarah Mitchell", timestamp: "2026-09-03T09:32:00Z", clientName: "Sophie Anderson" },
-  { id: "ACT-008", aptId: "APT-005", action: "created",     user: "Sarah Mitchell", timestamp: "2026-09-01T11:00:00Z", clientName: "Michael Thompson" },
-  { id: "ACT-009", aptId: "APT-005", action: "confirmed",   user: "Sarah Mitchell", timestamp: "2026-09-01T11:02:00Z", clientName: "Michael Thompson" },
-  { id: "ACT-010", aptId: "APT-006", action: "created",     user: "Sarah Mitchell", timestamp: "2026-09-06T13:00:00Z", clientName: "Clara Bennett" },
-  { id: "ACT-011", aptId: "APT-007", action: "created",     user: "Sarah Mitchell", timestamp: "2026-08-15T09:00:00Z", clientName: "Thomas Reed" },
-  { id: "ACT-012", aptId: "APT-007", action: "confirmed",   user: "Sarah Mitchell", timestamp: "2026-08-15T09:02:00Z", clientName: "Thomas Reed" },
-  { id: "ACT-013", aptId: "APT-008", action: "created",     user: "Sarah Mitchell", timestamp: "2026-08-20T10:00:00Z", clientName: "Aria Patel" },
-  { id: "ACT-014", aptId: "APT-008", action: "completed",   user: "Sarah Mitchell", timestamp: "2026-09-04T11:05:00Z", clientName: "Aria Patel" },
-  { id: "ACT-015", aptId: "APT-009", action: "created",     user: "Sarah Mitchell", timestamp: "2026-08-18T14:00:00Z", clientName: "Lucas Rivera" },
-  { id: "ACT-016", aptId: "APT-009", action: "completed",   user: "Sarah Mitchell", timestamp: "2026-09-02T15:35:00Z", clientName: "Lucas Rivera" },
-  { id: "ACT-017", aptId: "APT-010", action: "created",     user: "Sarah Mitchell", timestamp: "2026-08-10T09:00:00Z", clientName: "Grace Tanaka" },
-  { id: "ACT-018", aptId: "APT-010", action: "cancelled",   user: "Sarah Mitchell", timestamp: "2026-08-28T17:30:00Z", clientName: "Grace Tanaka", note: "Client unable to attend." },
-  { id: "ACT-019", aptId: "APT-011", action: "created",     user: "Sarah Mitchell", timestamp: "2026-09-01T10:00:00Z", clientName: "Nathan Brooks" },
-  { id: "ACT-020", aptId: "APT-011", action: "rescheduled", user: "Sarah Mitchell", timestamp: "2026-09-07T09:00:00Z", clientName: "Nathan Brooks", note: "Moved from Sept 10 to Sept 15" },
-];
+
+
+
 
 const CANCEL_REASONS = ["Client requested cancellation","Executive unavailable","Schedule conflict","Meeting no longer needed","Other"];
 
@@ -97,7 +56,7 @@ function fmtTime(t: string) { const [h, m] = t.split(":").map(Number); return `$
 function fmtTs(ts: string) { return new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }); }
 function addMin(t: string, min: number): string { const [h, m] = t.split(":").map(Number); const total = h * 60 + m + min; return `${Math.floor(total / 60) % 24}`.padStart(2, "0") + ":" + `${total % 60}`.padStart(2, "0"); }
 function toMin(t: string): number { const [h, m] = t.split(":").map(Number); return h * 60 + m; }
-function genId(): string { return "APT-" + String(Math.floor(Math.random() * 9000) + 1000); }
+function genId(): string { return "APT-" + crypto.randomUUID(); }
 function genActId(): string { return "ACT-" + Date.now(); }
 function findConflict(apts: Appointment[], execId: string, date: string, startTime: string, duration: number, excludeId?: string): Appointment | null {
   const start = toMin(startTime), end = start + duration;
@@ -169,7 +128,7 @@ function Tip({ label, children }: { label: string; children: React.ReactNode }) 
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
-    <button onClick={onChange} className={`relative w-10 h-5 rounded-full transition-colors duration-200 flex-shrink-0 ${checked ? "bg-blue-600" : "bg-slate-300"}`}>
+    <button disabled={STATIC_PREVIEW} onClick={onChange} className={`relative w-10 h-5 rounded-full transition-colors duration-200 flex-shrink-0 ${checked ? "bg-blue-600" : "bg-slate-300"}`}>
       <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${checked ? "translate-x-5" : ""}`} />
     </button>
   );
@@ -195,6 +154,7 @@ function FloatingNav({ currentView, onNav, currentUser, onLogout }: { currentVie
     { id: "history" as AppView, label: "History", Icon: HistoryIcon },
     { id: "settings" as AppView, label: "Settings", Icon: Settings },
   ];
+  if (currentUser.role === "admin") nav.push({ id: "system-history", label: "System History", Icon: Activity });
   const isActive = (v: AppView) => ["detail","new-appointment"].includes(currentView) ? v === "appointments" : currentView === v;
   return (
     <aside className="fixed left-4 top-4 bottom-4 z-40 w-56 hidden md:flex flex-col">
@@ -236,7 +196,7 @@ function FloatingNav({ currentView, onNav, currentUser, onLogout }: { currentVie
   );
 }
 
-function MobileBottomNav({ currentView, onNav }: { currentView: AppView; onNav: (v: AppView) => void }) {
+function MobileBottomNav({ currentView, onNav, isAdmin }: { currentView: AppView; onNav: (v: AppView) => void; isAdmin: boolean }) {
   const nav = [
     { id: "dashboard" as AppView, label: "Home", Icon: LayoutDashboard },
     { id: "appointments" as AppView, label: "Appts", Icon: ClipboardList },
@@ -244,12 +204,13 @@ function MobileBottomNav({ currentView, onNav }: { currentView: AppView; onNav: 
     { id: "history" as AppView, label: "History", Icon: HistoryIcon },
     { id: "settings" as AppView, label: "Settings", Icon: Settings },
   ];
+  if (isAdmin) nav.push({ id: "system-history", label: "Audit", Icon: Activity });
   const isActive = (v: AppView) => ["detail","new-appointment"].includes(currentView) ? v === "appointments" : currentView === v;
   return (
     <nav className="fixed bottom-4 left-4 right-4 z-40 md:hidden">
       <div className={`${glassDark} rounded-2xl px-2 py-2 flex items-center justify-around`}>
         {nav.map(({ id, label, Icon }) => (
-          <button key={id} onClick={() => onNav(id)} className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all flex-1 ${isActive(id) ? "bg-white/[0.14] text-blue-400" : "text-slate-400 hover:text-slate-200"}`}>
+          <button key={id} onClick={() => onNav(id)} className={`flex flex-col items-center gap-0.5 px-1 py-2 min-w-0 rounded-xl transition-all flex-1 ${isActive(id) ? "bg-white/[0.14] text-blue-400" : "text-slate-400 hover:text-slate-200"}`}>
             <Icon className="w-4 h-4" />
             <span className="text-[10px] font-medium">{label}</span>
           </button>
@@ -452,6 +413,27 @@ function LoginView({ onLogin }: { onLogin: (user: AppUser) => void }) {
   const [password, setPassword] = useState("");
   const [demoOpen, setDemoOpen] = useState(false);
   const [error, setError] = useState("");
+  const [accounts, setAccounts] = useState<AppUser[]>([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (STATIC_PREVIEW) { setAccounts(previewData.INITIAL_USERS as AppUser[]); return; }
+    void fetch("/api/auth/demo-accounts").then(async response => {
+      if (!response.ok) throw new Error("Unable to load accounts. Check the server and XAMPP MySQL.");
+      setAccounts((await response.json()).users);
+    }).catch(error => setError(error.message));
+  }, []);
+  const signIn = async (event: React.FormEvent) => {
+    event.preventDefault(); if (busy) return;
+    if (STATIC_PREVIEW) { const user = accounts.find(u => u.email === email); if (user) onLogin(user); else setError("Select a sample account to open the preview."); return; }
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to sign in");
+      onLogin(data.user);
+    } catch (error) { setError(error instanceof Error ? error.message : "Unable to sign in"); }
+    finally { setBusy(false); }
+  };
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       <Background />
@@ -461,32 +443,33 @@ function LoginView({ onLogin }: { onLogin: (user: AppUser) => void }) {
             <Calendar className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Meridian EAS</h1>
-          <p className="text-sm text-slate-500 mt-1">Executive Appointment System</p>
+          <p className="text-sm text-slate-500 mt-1">{STATIC_PREVIEW ? "Read-only frontend preview" : "Executive Appointment System"}</p>
         </div>
-        <form onSubmit={e => { e.preventDefault(); setError("Invalid email or password. Use a demo account below."); }} className="space-y-4">
+        {!STATIC_PREVIEW && <form onSubmit={signIn} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
-            <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="your@email.com" className={inpOk} />
+            <input required autoComplete="username" type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="your@email.com" className={inpOk} />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-sm font-medium text-slate-700">Password</label>
               <button type="button" className="text-xs text-blue-600 hover:underline">Forgot password?</button>
             </div>
-            <input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} placeholder="••••••••" className={inpOk} />
+            <input required autoComplete="current-password" type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} placeholder="••••••••" className={inpOk} />
           </div>
           {error && <div className="p-3 bg-red-50/80 border border-red-200/70 rounded-xl text-sm text-red-700 flex items-center gap-2"><AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}</div>}
-          <button type="submit" className="w-full bg-blue-600/90 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 shadow-lg shadow-blue-500/20">Sign In</button>
-        </form>
-        <div className="mt-6 pt-5 border-t border-white/50">
+          <button type="submit" disabled={busy} className="w-full bg-blue-600/90 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 shadow-lg shadow-blue-500/20">Sign In</button>
+        </form>}
+        {accounts.length > 0 && <div className="mt-6 pt-5 border-t border-white/50">
           <button onClick={() => setDemoOpen(o => !o)} className="w-full flex items-center justify-between text-sm text-slate-500 hover:text-slate-700 transition-colors">
-            <span>Demo accounts</span>
+            <span>{STATIC_PREVIEW ? "Sample accounts" : "Demo accounts"}</span>
             <ChevronRight className={`w-4 h-4 transition-transform ${demoOpen ? "rotate-90" : ""}`} />
           </button>
           {demoOpen && (
             <div className="mt-3 space-y-1.5">
-              {INITIAL_USERS.map(u => (
-                <button key={u.id} onClick={() => onLogin(u)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/50 hover:bg-white/80 border border-white/60 transition-all hover:-translate-y-0.5 text-left">
+              <p className="text-xs text-slate-500 mb-2">{STATIC_PREVIEW ? "Select a role to browse sample screens. This does not create a login session." : "Select an account, then Sign In. Demo password: MeridianDemo123!"}</p>
+              {accounts.map(u => (
+                <button key={u.id} onClick={() => { if (STATIC_PREVIEW) onLogin(u); else { setEmail(u.email); setPassword("MeridianDemo123!"); setError(""); } }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/50 hover:bg-white/80 border border-white/60 transition-all hover:-translate-y-0.5 text-left">
                   <Av initials={u.initials} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-slate-900 truncate">{u.name}</div>
@@ -497,7 +480,7 @@ function LoginView({ onLogin }: { onLogin: (user: AppUser) => void }) {
               ))}
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );
@@ -532,7 +515,7 @@ function DashboardView({ appointments, activityLog, onViewDetail, onNewAppointme
           <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Good morning, {currentUser.name.split(" ")[0]}</h1>
           <p className="text-sm text-slate-500 mt-0.5">{todayDisplay}</p>
         </div>
-        {currentUser.role === "assistant" && (
+        {currentUser.role === "assistant" && !STATIC_PREVIEW && (
           <button onClick={onNewAppointment} className="flex items-center gap-2 bg-blue-600/90 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 shadow-lg shadow-blue-500/20">
             <Plus className="w-4 h-4" /> New Appointment
           </button>
@@ -781,10 +764,26 @@ const STEP_META: { id: BookStep; label: string }[] = [
 ];
 const FORM_STEPS: BookStep[] = ["client","meeting","executive","datetime","availability","review"];
 
-function NewAppointmentView({ appointments, onSave, onBack, onViewDetail, onNavDashboard, currentUser, editData, preFill }: {
-  appointments: Appointment[]; onSave: (apt: Appointment) => void;
+const F = ({ label, err, req = true, children }: { label: string; err?: string; req?: boolean; children: React.ReactNode }) => (
+    <div>
+      <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}{req && <span className="text-red-500 ml-0.5">*</span>}</label>
+      {children}
+      {err && <p className="text-xs text-red-600 mt-1">{err}</p>}
+    </div>
+  );
+
+const Card = ({ title, Icon, children }: { title: string; Icon: React.FC<{ className?: string }>; children: React.ReactNode }) => (
+    <div className={`${glass} rounded-2xl overflow-hidden`}>
+      <div className="px-6 py-4 border-b border-white/40 flex items-center gap-2 bg-white/20"><Icon className="w-4 h-4 text-slate-500" /><h3 className="text-sm font-semibold text-slate-900">{title}</h3></div>
+      <div className="p-6">{children}</div>
+    </div>
+  );
+
+
+function NewAppointmentView({ appointments, onSave, onBack, onViewDetail, onNavDashboard, currentUser, editData, preFill, defaultDuration }: {
+  appointments: Appointment[]; onSave: (apt: Appointment) => Promise<Appointment>;
   onBack: () => void; onViewDetail: (id: string) => void; onNavDashboard: () => void;
-  currentUser: AppUser; editData?: Appointment; preFill?: { date?: string; startTime?: string };
+  currentUser: AppUser; editData?: Appointment; preFill?: { date?: string; startTime?: string }; defaultDuration: number;
 }) {
   const isEdit = !!editData;
   const [step, setStep] = useState<BookStep>("client");
@@ -793,10 +792,10 @@ function NewAppointmentView({ appointments, onSave, onBack, onViewDetail, onNavD
     clientEmail: editData?.clientEmail ?? "", clientPhone: editData?.clientPhone ?? "",
     purpose: editData?.purpose ?? "", notes: editData?.notes ?? "",
     executiveId: editData?.executiveId ?? "", date: editData?.date ?? preFill?.date ?? "",
-    startTime: editData?.startTime ?? preFill?.startTime ?? "", duration: String(editData?.duration ?? 60),
+    startTime: editData?.startTime ?? preFill?.startTime ?? "", duration: String(editData?.duration ?? defaultDuration),
   });
   const [errors, setErrors] = useState<Partial<Record<keyof BookForm, string>>>({});
-  const [avConflict, setAvConflict] = useState<Appointment | null | undefined>(undefined);
+  const [avConflict, setAvConflict] = useState<Appointment | null | false | undefined>(undefined);
   const [savedApt, setSavedApt] = useState<Appointment | null>(null);
 
   const dur = parseInt(form.duration || "60");
@@ -810,7 +809,7 @@ function NewAppointmentView({ appointments, onSave, onBack, onViewDetail, onNavD
     if (fields.includes("clientName") && !form.clientName.trim()) e.clientName = "Client name is required";
     if (fields.includes("clientOrg") && !form.clientOrg.trim()) e.clientOrg = "Organization is required";
     if (fields.includes("clientEmail")) { if (!form.clientEmail.trim()) e.clientEmail = "Email is required"; else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.clientEmail)) e.clientEmail = "Invalid email address"; }
-    if (fields.includes("clientPhone") && !form.clientPhone.trim()) e.clientPhone = "Phone number is required";
+    if (fields.includes("clientPhone") && (!/^[+\d\s().-]+$/.test(form.clientPhone) || form.clientPhone.replace(/\D/g, "").length < 7)) e.clientPhone = "Enter a valid phone number";
     if (fields.includes("purpose") && !form.purpose.trim()) e.purpose = "Meeting purpose is required";
     if (fields.includes("executiveId") && !form.executiveId) e.executiveId = "Please select an executive";
     if (fields.includes("date")) { if (!form.date) e.date = "Appointment date is required"; else if (form.date < TODAY) e.date = "Appointment date cannot be in the past"; }
@@ -838,7 +837,7 @@ function NewAppointmentView({ appointments, onSave, onBack, onViewDetail, onNavD
     if (!c) { setForm(f => ({ ...f, startTime: time })); setAvConflict(false); }
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const fc = findConflict(appointments, form.executiveId, form.date, form.startTime, dur, editData?.id);
     if (fc) { setAvConflict(fc); setStep("availability"); return; }
     const now = new Date().toISOString();
@@ -849,25 +848,12 @@ function NewAppointmentView({ appointments, onSave, onBack, onViewDetail, onNavD
       status: editData?.status ?? "confirmed", createdAt: editData?.createdAt ?? now, updatedAt: now,
       createdBy: editData?.createdBy ?? currentUser.name, updatedBy: currentUser.name,
     };
-    onSave(apt);
-    setSavedApt(apt);
-    setStep("confirmed");
+    try {
+      const saved = await onSave(apt);
+      setSavedApt(saved);
+      setStep("confirmed");
+    } catch { /* Keep the form open for retry after a failed save. */ }
   };
-
-  const F = ({ label, err, req = true, children }: { label: string; err?: string; req?: boolean; children: React.ReactNode }) => (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}{req && <span className="text-red-500 ml-0.5">*</span>}</label>
-      {children}
-      {err && <p className="text-xs text-red-600 mt-1">{err}</p>}
-    </div>
-  );
-
-  const Card = ({ title, Icon, children }: { title: string; Icon: React.FC<{ className?: string }>; children: React.ReactNode }) => (
-    <div className={`${glass} rounded-2xl overflow-hidden`}>
-      <div className="px-6 py-4 border-b border-white/40 flex items-center gap-2 bg-white/20"><Icon className="w-4 h-4 text-slate-500" /><h3 className="text-sm font-semibold text-slate-900">{title}</h3></div>
-      <div className="p-6">{children}</div>
-    </div>
-  );
 
   if (step === "confirmed" && savedApt) return (
     <div className="p-4 md:p-6 flex flex-col items-center text-center max-w-lg mx-auto py-12">
@@ -1193,14 +1179,14 @@ function AppointmentDetailView({ apt, activityLog, onBack, onEdit, onCancel, onC
 
 // ─── Schedule ─────────────────────────────────────────────────────────────────
 
-function ScheduleView({ appointments, onViewDetail, onNewAptFromSlot }: { appointments: Appointment[]; onViewDetail: (id: string) => void; onNewAptFromSlot: (date: string, startTime: string) => void }) {
-  const [calView, setCalView] = useState<"day"|"week">("week");
+function ScheduleView({ appointments, onViewDetail, onNewAptFromSlot, defaultView }: { appointments: Appointment[]; onViewDetail: (id: string) => void; onNewAptFromSlot: (date: string, startTime: string) => void; defaultView: "day" | "week" }) {
+  const [calView, setCalView] = useState<"day"|"week">(defaultView);
   const [currentDate, setCurrentDate] = useState(() => new Date(TODAY + "T00:00:00"));
   const HOUR_H = 64, START_H = 8, END_H = 18;
   const HOURS = Array.from({ length: END_H - START_H }, (_, i) => i + START_H);
   const weekStart = useMemo(() => { const d = new Date(currentDate); const day = d.getDay(); d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); return d; }, [currentDate]);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(weekStart.getDate() + i); return d; }), [weekStart]);
-  const toDateStr = (d: Date) => d.toISOString().split("T")[0];
+  const toDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const displayDays = calView === "week" ? weekDays : [currentDate];
   const dayNames = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
   const aptTop = (t: string) => { const [h, m] = t.split(":").map(Number); return ((h - START_H) * 60 + m) / 60 * HOUR_H; };
@@ -1344,12 +1330,26 @@ function HistoryView({ appointments, onViewDetail }: { appointments: Appointment
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
-function SettingsView({ currentUser, users, onUpdateUsers }: { currentUser: AppUser; users: AppUser[]; onUpdateUsers: (u: AppUser[]) => void }) {
+function SettingsView({ currentUser, users, onUpdateUsers, onPasswordChanged, preferences, onSavePreferences }: { currentUser: AppUser; users: AppUser[]; onUpdateUsers: (id: string, active: boolean) => Promise<void>; onPasswordChanged: () => void; preferences: { calendarView: "day" | "week"; duration: number }; onSavePreferences: (input: { calendarView: "day" | "week"; duration: number }) => Promise<void> }) {
   const isAdmin = currentUser.role === "admin";
   const [activeTab, setActiveTab] = useState<"profile"|"account"|"notifications"|"preferences">("profile");
   const [notifications, setNotifications] = useState(NOTIFICATION_DEFAULTS);
-  const [calDefault, setCalDefault] = useState<"day"|"week">("week");
-  const [durationDefault, setDurationDefault] = useState("60");
+  const [calDefault, setCalDefault] = useState<"day"|"week">(preferences.calendarView);
+  const [durationDefault, setDurationDefault] = useState(String(preferences.duration));
+  const [passwordFields, setPasswordFields] = useState(["", "", ""]);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const changePassword = async () => {
+    if (changingPassword) return;
+    if (passwordFields[1] !== passwordFields[2]) { toast.error("New passwords do not match"); return; }
+    setChangingPassword(true);
+    try {
+      const response = await fetch("/api/auth/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: passwordFields[0], newPassword: passwordFields[1] }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to update password");
+      toast.success("Password updated. Sign in with your new password."); onPasswordChanged();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to update password"); }
+    finally { setChangingPassword(false); }
+  };
   const tabs = [{ id: "profile" as const, label: "Profile" },{ id: "account" as const, label: "Account" },{ id: "notifications" as const, label: "Notifications" },{ id: "preferences" as const, label: "Preferences" }];
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-4xl">
@@ -1380,7 +1380,7 @@ function SettingsView({ currentUser, users, onUpdateUsers }: { currentUser: AppU
                 </div>
               ))}
             </div>
-            <button onClick={() => toast.success("Profile saved")} className="px-4 py-2 text-sm font-medium text-white bg-blue-600/90 hover:bg-blue-700 rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 shadow-md shadow-blue-500/15">Save Changes</button>
+            <button disabled={STATIC_PREVIEW} onClick={() => toast.success("Profile saved")} className="px-4 py-2 text-sm font-medium text-white bg-blue-600/90 hover:bg-blue-700 rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 shadow-md shadow-blue-500/15">Save Changes</button>
           </div>
         </div>
       )}
@@ -1390,13 +1390,13 @@ function SettingsView({ currentUser, users, onUpdateUsers }: { currentUser: AppU
           <div className="px-5 py-4 border-b border-white/40 flex items-center gap-2 bg-white/20"><Settings className="w-4 h-4 text-slate-500" /><h3 className="text-sm font-semibold text-slate-900">Change Password</h3></div>
           <div className="p-6">
             <div className="space-y-4 max-w-sm">
-              {["Current Password","New Password","Confirm New Password"].map(label => (
+              {["Current Password","New Password","Confirm New Password"].map((label, index) => (
                 <div key={label}>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
-                  <input type="password" placeholder="••••••••" className={inpOk} />
+                  <input aria-label={label} autoComplete={index === 0 ? "current-password" : "new-password"} type="password" value={passwordFields[index]} onChange={e => setPasswordFields(fields => fields.map((value, i) => i === index ? e.target.value : value))} placeholder="••••••••" className={inpOk} />
                 </div>
               ))}
-              <button onClick={() => toast.success("Password updated")} className="px-4 py-2 text-sm font-medium text-white bg-blue-600/90 hover:bg-blue-700 rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 shadow-md shadow-blue-500/15">Update Password</button>
+              <button onClick={() => void changePassword()} disabled={STATIC_PREVIEW || changingPassword} className="px-4 py-2 text-sm font-medium text-white bg-blue-600/90 hover:bg-blue-700 rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 shadow-md shadow-blue-500/15">Update Password</button>
             </div>
           </div>
         </div>
@@ -1436,7 +1436,7 @@ function SettingsView({ currentUser, users, onUpdateUsers }: { currentUser: AppU
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Default Appointment Duration</label>
               <select value={durationDefault} onChange={e => setDurationDefault(e.target.value)} className={inpOk}>{DURATION_OPTIONS.map(d => <option key={d} value={d}>{d} minutes</option>)}</select>
             </div>
-            <button onClick={() => toast.success("Preferences saved")} className="px-4 py-2 text-sm font-medium text-white bg-blue-600/90 hover:bg-blue-700 rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 shadow-md shadow-blue-500/15">Save Preferences</button>
+            <button disabled={STATIC_PREVIEW} onClick={async () => { try { await onSavePreferences({ calendarView: calDefault, duration: Number(durationDefault) }); toast.success("Preferences saved"); } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to save preferences"); } }} className="px-4 py-2 text-sm font-medium text-white bg-blue-600/90 hover:bg-blue-700 rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 shadow-md shadow-blue-500/15">Save Preferences</button>
           </div>
         </div>
       )}
@@ -1445,7 +1445,7 @@ function SettingsView({ currentUser, users, onUpdateUsers }: { currentUser: AppU
         <div className={`${glass} rounded-2xl overflow-hidden`}>
           <div className="px-5 py-4 border-b border-white/40 flex items-center justify-between bg-white/20">
             <div className="flex items-center gap-2"><Users className="w-4 h-4 text-slate-500" /><h3 className="text-sm font-semibold text-slate-900">User Management</h3></div>
-            <button onClick={() => toast("Add user — coming soon")} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600/90 hover:bg-blue-700 rounded-xl transition-all hover:-translate-y-0.5"><Plus className="w-3.5 h-3.5" /> Add User</button>
+            <button disabled={STATIC_PREVIEW} onClick={() => toast("Add user — coming soon")} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600/90 hover:bg-blue-700 rounded-xl transition-all hover:-translate-y-0.5"><Plus className="w-3.5 h-3.5" /> Add User</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1465,8 +1465,8 @@ function SettingsView({ currentUser, users, onUpdateUsers }: { currentUser: AppU
                       <div className="flex items-center gap-1">
                         <Tip label="Edit User"><button onClick={() => toast("Edit user — coming soon")} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50/60 rounded-lg transition-all"><Pencil className="w-3.5 h-3.5" /></button></Tip>
                         <Tip label={u.active ? "Deactivate" : "Activate"}>
-                          <button disabled={u.id === currentUser.id}
-                            onClick={() => { onUpdateUsers(users.map(usr => usr.id === u.id ? { ...usr, active: !usr.active } : usr)); toast.success(`${u.name} ${u.active ? "deactivated" : "activated"}`); }}
+                          <button disabled={STATIC_PREVIEW || u.id === currentUser.id}
+                            onClick={async () => { try { await onUpdateUsers(u.id, !u.active); toast.success(`${u.name} ${u.active ? "deactivated" : "activated"}`); } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to update user"); } }}
                             className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50/60 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed">
                             {u.active ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                           </button>
@@ -1488,17 +1488,16 @@ function SettingsView({ currentUser, users, onUpdateUsers }: { currentUser: AppU
 
 const VIEW_TITLES: Record<AppView, string> = {
   dashboard: "Dashboard", appointments: "Appointments", "new-appointment": "New Appointment",
-  detail: "Appointment Details", schedule: "Schedule", history: "History", settings: "Settings",
+  detail: "Appointment Details", schedule: "Schedule", history: "History", settings: "Settings", "system-history": "System History",
 };
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState<AppUser>(INITIAL_USERS[0]);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [view, setView] = useState<AppView>("dashboard");
   const [prevView, setPrevView] = useState<AppView>("appointments");
-  const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
-  const [users, setUsers] = useState<AppUser[]>(INITIAL_USERS);
-  const [activityLog, setActivityLog] = useState<ActivityEntry[]>(INITIAL_ACTIVITY);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
   const [selectedAptId, setSelectedAptId] = useState<string | null>(null);
   const [editAptId, setEditAptId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
@@ -1506,57 +1505,119 @@ export default function App() {
   const [rescheduleId, setRescheduleId] = useState<string | null>(null);
   const [aptPreFill, setAptPreFill] = useState<{ date?: string; startTime?: string } | undefined>(undefined);
 
-  const canCreate = currentUser.role === "assistant";
+  const [preferences, setPreferences] = useState<{ calendarView: "day" | "week"; duration: number }>({ calendarView: "week", duration: 60 });
+  const savePreferences = async (input: { calendarView: "day" | "week"; duration: number }) => {
+    const response = await fetch("/api/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+    const data = await response.json(); if (!response.ok) throw new Error(data.error || "Unable to save preferences"); setPreferences(data.preferences);
+  };
 
-  const addActivity = (entry: Omit<ActivityEntry, "id" | "user" | "timestamp">) => {
-    setActivityLog(p => [...p, { id: genActId(), user: currentUser.name, timestamp: new Date().toISOString(), ...entry }]);
+  const canCreate = currentUser?.role === "assistant" && !STATIC_PREVIEW;
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const load = async (showLoading = true) => {
+    if (STATIC_PREVIEW) {
+      EXECUTIVES = previewData.EXECUTIVES;
+      setAppointments(previewData.INITIAL_APPOINTMENTS as Appointment[]); setActivityLog(previewData.INITIAL_ACTIVITY as ActivityEntry[]); setUsers(previewData.INITIAL_USERS as AppUser[]); setLoading(false); return;
+    }
+    if (showLoading) { setLoading(true); setLoadError(""); }
+    try {
+      const response = await fetch("/api/state");
+      if (response.status === 401) { setCurrentUser(null); setAppointments([]); setActivityLog([]); setUsers([]); return; }
+      if (!response.ok) throw new Error("Unable to load appointments. Please try again.");
+      const data = await response.json();
+      if (data.executives) EXECUTIVES = data.executives;
+      setAppointments(data.appointments); setActivityLog(data.activityLog); setUsers(data.users || []); if (data.preferences) setPreferences(data.preferences);
+    } catch (error) { if (showLoading) setLoadError(error instanceof Error ? error.message : "Unable to load appointments"); }
+    finally { if (showLoading) setLoading(false); }
+  };
+  useEffect(() => {
+    if (STATIC_PREVIEW) { setLoading(false); return; }
+    void (async () => {
+      try {
+        const response = await fetch("/api/auth/me");
+        if (!response.ok) throw new Error("Unable to connect to the server");
+        const data = await response.json(); setCurrentUser(data.user);
+        if (data.user) await load();
+      } catch (error) { setLoadError(error instanceof Error ? error.message : "Unable to connect"); }
+      finally { setLoading(false); }
+    })();
+  }, []);
+  const logout = async () => {
+    if (STATIC_PREVIEW) { setCurrentUser(null); setView("dashboard"); return; }
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      if (!response.ok) throw new Error("Unable to sign out. Please try again.");
+      setCurrentUser(null); setAppointments([]); setActivityLog([]); setUsers([]);
+      setCancelId(null); setCompleteId(null); setRescheduleId(null); setEditAptId(null); setView("dashboard");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to sign out"); }
+  };
+  const updateUserActive = async (id: string, active: boolean) => {
+    const response = await fetch(`/api/users/${id}/active`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active }) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to update user");
+    setUsers(data.users);
+  };
+  const persist = async (url: string, method: string, input: unknown): Promise<Appointment> => {
+    if (savingRef.current) throw new Error("A save is already in progress");
+    savingRef.current = true; setSaving(true);
+    try {
+      const response = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 401) { setCurrentUser(null); setAppointments([]); setActivityLog([]); setUsers([]); }
+        if (response.status === 409) await load(false);
+        throw new Error(data.error || "Unable to save appointment");
+      }
+      setAppointments(data.appointments); setActivityLog(data.activityLog);
+      return data.appointment;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to save appointment. Please try again.");
+      throw error;
+    } finally { savingRef.current = false; setSaving(false); }
   };
 
   const handleViewDetail = (id: string) => { setPrevView(view === "detail" ? prevView : view); setSelectedAptId(id); setView("detail"); };
   const handleEdit = (id: string) => { setEditAptId(id); setAptPreFill(undefined); setPrevView(view); setView("new-appointment"); };
-  const handleNewAptFromSlot = (date: string, startTime: string) => { setEditAptId(null); setAptPreFill({ date, startTime }); setView("new-appointment"); };
+  const handleNewAptFromSlot = (date: string, startTime: string) => { if (STATIC_PREVIEW) return; setEditAptId(null); setAptPreFill({ date, startTime }); setView("new-appointment"); };
 
-  const handleSave = (apt: Appointment) => {
+  const handleSave = async (apt: Appointment) => {
     const isEdit = appointments.some(a => a.id === apt.id);
-    if (isEdit) {
-      setAppointments(p => p.map(a => a.id === apt.id ? apt : a));
-      addActivity({ aptId: apt.id, action: "updated", clientName: apt.clientName });
-      toast.success("Appointment updated", { description: apt.clientName });
-    } else {
-      setAppointments(p => [...p, apt]);
-      addActivity({ aptId: apt.id, action: "created", clientName: apt.clientName });
-      addActivity({ aptId: apt.id, action: "confirmed", clientName: apt.clientName });
-      toast.success("Appointment confirmed!", { description: `${apt.clientName} · ${fmtDateShort(apt.date)} at ${fmtTime(apt.startTime)}` });
-    }
+    const saved = await persist(isEdit ? `/api/appointments/${apt.id}` : "/api/appointments", isEdit ? "PUT" : "POST", apt);
+    toast.success(isEdit ? "Appointment updated" : "Appointment confirmed!", { description: saved.clientName });
     setEditAptId(null); setAptPreFill(undefined);
+    return saved;
+  };
+  const handleCancel = async (id: string, reason: string) => {
+    try {
+      await persist(`/api/appointments/${id}/cancel`, "POST", { reason, updatedAt: appointments.find(a => a.id === id)?.updatedAt });
+      toast.success("Appointment cancelled"); setCancelId(null);
+    } catch { /* Keep the dialog open for retry. */ }
+  };
+  const handleComplete = async (id: string) => {
+    try {
+      await persist(`/api/appointments/${id}/complete`, "POST", { updatedAt: appointments.find(a => a.id === id)?.updatedAt });
+      toast.success("Marked as completed"); setCompleteId(null);
+      if (view === "detail") setView("history");
+    } catch { /* Keep the dialog open for retry. */ }
+  };
+  const handleReschedule = async (id: string, date: string, startTime: string, duration: number) => {
+    try {
+      await persist(`/api/appointments/${id}/reschedule`, "POST", { date, startTime, duration, updatedAt: appointments.find(a => a.id === id)?.updatedAt });
+      toast.success("Appointment rescheduled"); setRescheduleId(null);
+    } catch { /* Keep the dialog open for retry. */ }
   };
 
-  const handleCancel = (id: string, reason: string) => {
-    const apt = appointments.find(a => a.id === id);
-    setAppointments(p => p.map(a => a.id === id ? { ...a, status: "cancelled", cancellationReason: reason, updatedAt: new Date().toISOString(), updatedBy: currentUser.name } : a));
-    addActivity({ aptId: id, action: "cancelled", clientName: apt?.clientName ?? "", note: reason || undefined });
-    toast.success("Appointment cancelled", { description: apt?.clientName });
-    setCancelId(null);
-  };
+  if (!loading && !currentUser) return <LoginView onLogin={u => { setCurrentUser(u); void load(); toast.success(`Welcome back, ${u.name.split(" ")[0]}!`); }} />;
 
-  const handleComplete = (id: string) => {
-    const apt = appointments.find(a => a.id === id);
-    setAppointments(p => p.map(a => a.id === id ? { ...a, status: "completed", updatedAt: new Date().toISOString(), updatedBy: currentUser.name } : a));
-    addActivity({ aptId: id, action: "completed", clientName: apt?.clientName ?? "" });
-    toast.success("Marked as completed", { description: apt?.clientName });
-    setCompleteId(null);
-    if (view === "detail") setView("history");
-  };
+  if (loading || loadError) return <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-slate-700" role="status">
+    <p>{loading ? "Loading appointments…" : loadError}</p>
+    {loadError && <button onClick={() => void load()} className="px-4 py-2 rounded-xl bg-blue-600 text-white">Retry</button>}
+  </div>;
 
-  const handleReschedule = (id: string, date: string, time: string, duration: number) => {
-    const apt = appointments.find(a => a.id === id);
-    setAppointments(p => p.map(a => a.id === id ? { ...a, status: "rescheduled", previousDate: a.date, previousStartTime: a.startTime, date, startTime: time, duration, updatedAt: new Date().toISOString(), updatedBy: currentUser.name } : a));
-    addActivity({ aptId: id, action: "rescheduled", clientName: apt?.clientName ?? "", note: `Moved from ${apt ? fmtDateShort(apt.date) : ""} to ${fmtDateShort(date)}` });
-    toast.success("Appointment rescheduled", { description: `${apt?.clientName} · ${fmtDateShort(date)} at ${fmtTime(time)}` });
-    setRescheduleId(null);
-  };
-
-  if (!isLoggedIn) return <LoginView onLogin={u => { setCurrentUser(u); setIsLoggedIn(true); toast.success(`Welcome back, ${u.name.split(" ")[0]}!`); }} />;
+  if (!currentUser) return null;
 
   const selectedApt = selectedAptId ? appointments.find(a => a.id === selectedAptId) ?? null : null;
   const editApt = editAptId ? appointments.find(a => a.id === editAptId) : undefined;
@@ -1566,11 +1627,12 @@ export default function App() {
       <Background />
       <Toaster position="top-right" richColors toastOptions={{ classNames: { toast: "!bg-white/90 !backdrop-blur-xl !border !border-white/60 !shadow-xl !rounded-2xl" } }} />
 
+      {saving && <div className="fixed inset-0 z-[100] bg-slate-900/20 flex items-center justify-center" role="status" aria-live="polite"><span className="bg-white px-5 py-3 rounded-xl shadow-lg">Saving appointment…</span></div>}
       {cancelId && appointments.find(a => a.id === cancelId) && <CancelModal apt={appointments.find(a => a.id === cancelId)!} onConfirm={handleCancel} onClose={() => setCancelId(null)} />}
       {completeId && appointments.find(a => a.id === completeId) && <CompleteModal apt={appointments.find(a => a.id === completeId)!} onConfirm={handleComplete} onClose={() => setCompleteId(null)} />}
       {rescheduleId && appointments.find(a => a.id === rescheduleId) && <RescheduleModal apt={appointments.find(a => a.id === rescheduleId)!} appointments={appointments} onConfirm={handleReschedule} onClose={() => setRescheduleId(null)} />}
 
-      <FloatingNav currentView={view} onNav={setView} currentUser={currentUser} onLogout={() => { setIsLoggedIn(false); setView("dashboard"); }} />
+      <FloatingNav currentView={view} onNav={setView} currentUser={currentUser} onLogout={() => void logout()} />
 
       <div className="relative z-10 flex flex-col min-h-screen md:ml-[272px] mr-0 md:mr-2">
         <FloatingHeader title={VIEW_TITLES[view]} currentUser={currentUser} onNewAppointment={() => { setEditAptId(null); setAptPreFill(undefined); setView("new-appointment"); }} canCreate={canCreate} />
@@ -1582,20 +1644,21 @@ export default function App() {
               onBack={() => setView(editAptId ? prevView : "dashboard")}
               onViewDetail={id => { setSelectedAptId(id); setView("detail"); }}
               onNavDashboard={() => setView("dashboard")}
-              currentUser={currentUser} editData={editApt} preFill={aptPreFill} />
+              currentUser={currentUser} defaultDuration={preferences.duration} editData={editApt} preFill={aptPreFill} />
           )}
           {view === "detail" && (
             selectedApt
               ? <AppointmentDetailView apt={selectedApt} activityLog={activityLog} onBack={() => setView(prevView)} onEdit={handleEdit} onCancel={setCancelId} onComplete={setCompleteId} onReschedule={setRescheduleId} currentUser={currentUser} />
               : <div className="p-6 text-slate-500 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Appointment not found.</div>
           )}
-          {view === "schedule" && <ScheduleView appointments={appointments} onViewDetail={handleViewDetail} onNewAptFromSlot={handleNewAptFromSlot} />}
+          {view === "schedule" && <ScheduleView appointments={appointments} onViewDetail={handleViewDetail} onNewAptFromSlot={handleNewAptFromSlot} defaultView={preferences.calendarView} />}
+          {view === "system-history" && currentUser.role === "admin" && <SystemHistory />}
           {view === "history" && <HistoryView appointments={appointments} onViewDetail={handleViewDetail} />}
-          {view === "settings" && <SettingsView currentUser={currentUser} users={users} onUpdateUsers={setUsers} />}
+          {view === "settings" && <SettingsView preferences={preferences} onSavePreferences={savePreferences} currentUser={currentUser} users={users} onUpdateUsers={updateUserActive} onPasswordChanged={() => { setCurrentUser(null); setAppointments([]); setActivityLog([]); setUsers([]); }} />}
         </main>
       </div>
 
-      <MobileBottomNav currentView={view} onNav={setView} />
+      <MobileBottomNav currentView={view} onNav={setView} isAdmin={currentUser.role === "admin"} />
     </div>
   );
 }

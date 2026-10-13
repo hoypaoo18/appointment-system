@@ -1,0 +1,10 @@
+import { createServer } from 'node:http';
+import { openDatabase } from './database.mjs';
+import { webHandler } from './web-handler.mjs';
+import { access } from 'node:fs/promises';
+process.env.NODE_ENV ||= 'production';
+await access('dist/index.html');
+const database = await openDatabase();
+const server = createServer(webHandler(database));
+server.listen(Number(process.env.PORT || 3000), process.env.HOST || '0.0.0.0', () => console.log('Appointment web server ready on port ' + server.address().port));
+for (const signal of ['SIGINT','SIGTERM']) process.on(signal, () => server.close(async () => { await database.close(); process.exit(0); }));

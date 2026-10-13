@@ -1,10 +1,15 @@
 node_modules/
 .npm-cache/
 dist/
+dist-pages/
 
 .env
 .env.*
 !.env.example
+!.env.test.example
+!.env.production.example
+data/*.sqlite*
+data/sqlite-migration-backup.json
 
 *.log
 .DS_Store

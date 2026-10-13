@@ -1,0 +1,57 @@
+name: Deploy frontend preview to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+      - name: Build read-only frontend preview
+        run: npm run build:pages
+        env:
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+      - name: Install browser for preview verification
+        run: npx playwright install --with-deps chromium
+      - name: Verify preview has no backend requests
+        run: npm run test:pages
+        env:
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+          TEST_BROWSER_CHANNEL: chromium
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist-pages
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish preview
+        id: deployment
+        uses: actions/deploy-pages@v4
